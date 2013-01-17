@@ -1,11 +1,11 @@
 /*
- Robot motor control
+ Robot control
  
- This sketch is used to control a Pololu md08a Mototr controller from an arduino mega
+ This sketch is used to control a Mobile Robot using an arduino mega ADK
  
  Authour: Alex Angell
- Date: October 2011
- Version: 1.0
+ Date: 17 January 2013
+ Version: 1.1
  
  */
 #include "PIns_arduino.h"
@@ -29,7 +29,7 @@ const int MINDIST = -MAXDIST;
 
 //Control Variables
 
-//PICD Class
+//PID Class
 class PID{
   public:
     PID(){
@@ -128,7 +128,7 @@ int loopTime = 0;
 long int prevCountA=0;
 long int prevCountB=0;
 
-int path[10][2] = {{0,0},{0,0},{0,0},{0,0},{0,0},{0,0},{0,0},{0,0},{0,0},{0,0}};
+int path[10][2] = {{0,0},{0,0},{0,0},{0,0},{0,0},{0,0},{0,0},{0,0},{0,0},{0,0}};  //Array to store coordinates of a path
 
 //Serial Variables
 int incomingByte = 0;
@@ -138,6 +138,7 @@ int availableChars = 0;
   int v =0;
   int r =0;
 
+//Setup Function
 void setup()  { 
   randomSeed(1);
   Serial.begin(9600);
@@ -189,9 +190,12 @@ void setup()  {
   tone(48, 2000,500);
 } 
 
+//Main Loop
 void loop()  { 
     loopTime = loopTimer();
-    
+        
+    CheckSerial();
+    BarGraph( (int)(Range()) );
     deadRecon();
   
     if (targetPosA==countA){
@@ -241,16 +245,7 @@ void loop()  {
 //    }
     prevCountA=countA;
     
-    //PIDA();
-    //PIDB(); 
-    
-    BarGraph( (int)(Range()) );
-    CheckSerial();
-    //Forward();
     delay(100);    
-    //Serial.println(rpmA,4);
-    //Serial.print("    ");
-    //Serial.println(countB);
   
   /*
   for (int i=0; i==targetSpeed; i++){ 
@@ -337,6 +332,7 @@ float Range(){
   
 }
 
+//PID position control of motor A
 void PIDA(){
   posErrorA = targetPosA-countA;
   posIntegralA += (posErrorA*((float)(currentTime-prevTime)/1000));
@@ -344,6 +340,7 @@ void PIDA(){
   setMotor('A',targetSpeedA);  
 }
 
+//PID position control of motor A
 void PIDB(){
   posErrorB = targetPosB-countB;
   posIntegralB += (posErrorB*((float)(currentTime-prevTime)/1000));
@@ -351,6 +348,152 @@ void PIDB(){
   setMotor('B',targetSpeedB);
 }
 
+//Function called on each interupt from motor A encoders
+//Increments count on CW rotation
+//Deccrements count on CCW rotation
+void encoderA(){
+  //Encoder A pin A attached to arduino pin 2, microprocessor PE4
+  //Encoder A pin B attached to arduino pin 2, microprocessor PE5
+  EncoderA_Aprev=EncoderA_A;  //Set previous state of Encoder A pin A
+  EncoderA_A=bitRead(PINE,4);  //Read current state of encoder A pin A
+  //XOR previous state of Encoder A pin A with current state of Encoder A pin B to calculate direction of rotation
+  if(EncoderA_Aprev^(bitRead(PINE,5))){  
+   countA--; 
+  }
+  else{
+   countA++;
+  } 
+}
+
+//Function called on each interupt from motor B encoders
+void encoderB(){
+  //Encoder B pin A attached to arduino pin 2, microprocessor PD3
+  //Encoder B pin B attached to arduino pin 2, microprocessor PD2
+  EncoderB_Aprev=EncoderB_A;
+  EncoderB_A=bitRead(PIND,3);
+  if(EncoderB_Aprev^bitRead(PIND,2)){
+   countB++;
+  }
+  else{
+   countB--;
+  }  
+}
+
+//Set speed of selected motor
+void setMotorSpeed(char motor, int Speed){
+  //Speed currently dirrectly mapped to duty
+  //Change to use speed control in future
+  
+  setMotor(motor, Speed);
+  
+}
+
+//Set the duty cycle of selected motor
+void setMotor(char motor, int Duty){
+ 
+  if(Duty >MAXSPEED){
+    Duty=MAXSPEED;
+  }
+  else if(Duty <MINSPEED) {
+    Duty = MINSPEED;
+  };  
+  
+  if(Duty >255){
+    Duty=255;
+  }
+  else if(Duty <-255) {
+    Duty = -255;
+  };
+
+  if(motor == 'A'){
+    if (Duty == 0){
+      digitalWrite(mcAIN1,HIGH);
+      digitalWrite(mcAIN2,HIGH);  
+    }
+    else if (Duty>0){
+      digitalWrite(mcAIN1,LOW);
+      digitalWrite(mcAIN2,HIGH);
+    }
+    else if (Duty<0){
+      digitalWrite(mcAIN1,HIGH);
+      digitalWrite(mcAIN2,LOW);  
+    };
+    analogWrite(mcPWMA, abs(Duty));
+  }
+  else if(motor == 'B'){
+    if (Duty == 0){
+      digitalWrite(mcBIN1,HIGH);
+      digitalWrite(mcBIN2,HIGH);  
+    }
+    else if (Duty>0){
+      digitalWrite(mcBIN1,HIGH);
+      digitalWrite(mcBIN2,LOW);
+    }
+    else if (Duty<0){
+      digitalWrite(mcBIN1,LOW);
+      digitalWrite(mcBIN2,HIGH);  
+    };
+    analogWrite(mcPWMB, abs(Duty));
+  };
+}
+
+//Actions
+void Forward(){
+  setMotor('A', 255);
+  setMotor('B', 255);  
+}
+
+void Stop(){
+  setMotor('A', 0);
+  setMotor('B', 0);  
+}
+
+void Backward(){
+  setMotor('A', -255);
+  setMotor('B', -255);  
+}
+
+void ForwardLeft(){
+  setMotor('A', 128);
+  setMotor('B', 255);  
+}
+
+void ForwardRight(){
+  setMotor('A', 255);
+  setMotor('B', 128);  
+}
+
+void Clockwise(){
+  setMotor('A', 255);
+  setMotor('B', -255);  
+}
+
+void AntiClockwise(){
+  setMotor('A', -255);
+  setMotor('B', 255);  
+}
+
+void Random(){
+  setMotor('A', 255);
+  setMotor('B', -255);  
+}
+
+//Move robot at set velocity and angular veocity 
+void Move(int velocity, double angVelocity){
+ //(rate robot turns) +ve = anti clockwise as specified by the right-hand-rule
+  
+  setMotor('A', 0);
+  setMotor('B', 0);
+
+  int A = 0;
+  int B = 0;
+  A = (double)velocity - ((double)(angVelocity*WHEEL_SPACE)/2);
+  B = (double)velocity + (double)((angVelocity*WHEEL_SPACE)/2);
+
+  setMotorSpeed('A', A);
+  setMotorSpeed('B', B);
+    
+}
 
 //Check the serial port for data from pc
 void CheckSerial(){
@@ -470,140 +613,4 @@ void CheckSerial(){
     };
     Serial.flush();
   }  
-}
-
-//Function called on each interupt from motor A encoders
-//Increments count on CW rotation
-//Deccrements count on CCW rotation
-void encoderA(){
-  //Encoder A pin A attached to arduino pin 2, microprocessor PE4
-  //Encoder A pin B attached to arduino pin 2, microprocessor PE5
-  EncoderA_Aprev=EncoderA_A;  //Set previous state of Encoder A pin A
-  EncoderA_A=bitRead(PINE,4);  //Read current state of encoder A pin A
-  //XOR previous state of Encoder A pin A with current state of Encoder A pin B to calculate direction of rotation
-  if(EncoderA_Aprev^(bitRead(PINE,5))){  
-   countA--; 
-  }
-  else{
-   countA++;
-  } 
-}
-
-void encoderB(){
-  //Encoder B pin A attached to arduino pin 2, microprocessor PD3
-  //Encoder B pin B attached to arduino pin 2, microprocessor PD2
-  EncoderB_Aprev=EncoderB_A;
-  EncoderB_A=bitRead(PIND,3);
-  if(EncoderB_Aprev^bitRead(PIND,2)){
-   countB++;
-  }
-  else{
-   countB--;
-  }  
-}
-
-
-void setMotor(char motor, int Duty){
- 
-  if(Duty >MAXSPEED){
-    Duty=MAXSPEED;
-  }
-  else if(Duty <MINSPEED) {
-    Duty = MINSPEED;
-  };  
-  
-  if(Duty >255){
-    Duty=255;
-  }
-  else if(Duty <-255) {
-    Duty = -255;
-  };
-
-  if(motor == 'A'){
-    if (Duty == 0){
-      digitalWrite(mcAIN1,HIGH);
-      digitalWrite(mcAIN2,HIGH);  
-    }
-    else if (Duty>0){
-      digitalWrite(mcAIN1,LOW);
-      digitalWrite(mcAIN2,HIGH);
-    }
-    else if (Duty<0){
-      digitalWrite(mcAIN1,HIGH);
-      digitalWrite(mcAIN2,LOW);  
-    };
-    analogWrite(mcPWMA, abs(Duty));
-  }
-  else if(motor == 'B'){
-    if (Duty == 0){
-      digitalWrite(mcBIN1,HIGH);
-      digitalWrite(mcBIN2,HIGH);  
-    }
-    else if (Duty>0){
-      digitalWrite(mcBIN1,HIGH);
-      digitalWrite(mcBIN2,LOW);
-    }
-    else if (Duty<0){
-      digitalWrite(mcBIN1,LOW);
-      digitalWrite(mcBIN2,HIGH);  
-    };
-    analogWrite(mcPWMB, abs(Duty));
-  };
-}
-
-//Actions
-void Forward(){
-  setMotor('A', 255);
-  setMotor('B', 255);  
-}
-
-void Stop(){
-  setMotor('A', 0);
-  setMotor('B', 0);  
-}
-
-void Backward(){
-  setMotor('A', -255);
-  setMotor('B', -255);  
-}
-
-void ForwardLeft(){
-  setMotor('A', 128);
-  setMotor('B', 255);  
-}
-
-void ForwardRight(){
-  setMotor('A', 255);
-  setMotor('B', 128);  
-}
-
-void Clockwise(){
-  setMotor('A', 255);
-  setMotor('B', -255);  
-}
-
-void AntiClockwise(){
-  setMotor('A', -255);
-  setMotor('B', 255);  
-}
-
-void Random(){
-  setMotor('A', 255);
-  setMotor('B', -255);  
-}
-
-void Move(int velocity, double angVelocity){
-  //moves robot at set velcity together with an angular veocity (rate robot turns) +ve = anti clockwise as specified by the right-hand-rule
-  
-  setMotor('A', 0);
-  setMotor('B', 0);
-
-  int A = 0;
-  int B = 0;
-  A = (double)velocity - ((double)(angVelocity*WHEEL_SPACE)/2);
-  B = (double)velocity + (double)((angVelocity*WHEEL_SPACE)/2);
-
-  setMotor('A', A);
-  setMotor('B', B);
-    
 }
